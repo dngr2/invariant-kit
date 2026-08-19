@@ -93,11 +93,30 @@ contract MyStakingChecks is StakingNotifyCheck {
 The bundled Synthetix-model reference pair shows both outcomes: the check catches
 the unrestricted variant and clears the distributor-only one.
 
+### Constant-product AMM  ✅ available
+
+Fuzz that `reserve0 * reserve1` never decreases (the property that catches linear
+quotes, missing fees, wrong rounding — any pricing that leaks LP value), plus a
+round-trip drain check:
+
+```solidity
+import {ConstantProductInvariantHarness, IConstantProductAMM} from "invariant-kit/src/modules/ConstantProductInvariants.sol";
+
+contract MyPoolInvariants is ConstantProductInvariantHarness {
+    function _setUpAMM() internal override returns (IConstantProductAMM) {
+        return IConstantProductAMM(address(new MyPool(reserve0, reserve1)));
+    }
+}
+```
+
+`AMMRoundTripCheck.assertNoRoundTripProfit` confirms a swap a→b→a never returns
+more than it put in. The reference pair shows both: the linear-price pool leaks
+`k` and lets a round trip profit; the fee'd constant-product pool holds.
+
 ### Roadmap
 
-- **Staking rewards** — reward-conservation invariant harness + reward-rate-inflation check (extending the notify check above).
-- **Constant-product AMM** — `k`-never-decreases invariant + round-trip drain check.
 - **ERC-1967 proxy** — unprotected-initializer and storage-collision-on-upgrade checks.
+- **Staking** — reward-conservation invariant harness (extending the notify check).
 
 ## Why
 
