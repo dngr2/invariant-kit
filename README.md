@@ -73,10 +73,29 @@ offset.
 forge test   # 4 passing: safe-vault invariants + inflation check on naive vs safe
 ```
 
+### Staking rewards  ✅ available
+
+The single most common real staking finding is an **unrestricted
+`notifyRewardAmount`**: when anyone can call it, a griefer re-stretches the reward
+period with tiny amounts and dilutes every staker's reward rate. The check flags
+it:
+
+```solidity
+import {StakingNotifyCheck} from "invariant-kit/src/checks/StakingNotifyCheck.sol";
+
+contract MyStakingChecks is StakingNotifyCheck {
+    function test_notifyRestricted() public {
+        assertNotifyRestricted(address(myStaking)); // fails if anyone can notify
+    }
+}
+```
+
+The bundled Synthetix-model reference pair shows both outcomes: the check catches
+the unrestricted variant and clears the distributor-only one.
+
 ### Roadmap
 
-- **Staking rewards** — reward-conservation invariant + `notifyRewardAmount`
-  dilution / reward-rate-inflation checks (the most common real audit finding).
+- **Staking rewards** — reward-conservation invariant harness + reward-rate-inflation check (extending the notify check above).
 - **Constant-product AMM** — `k`-never-decreases invariant + round-trip drain check.
 - **ERC-1967 proxy** — unprotected-initializer and storage-collision-on-upgrade checks.
 
