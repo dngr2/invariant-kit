@@ -113,10 +113,30 @@ contract MyPoolInvariants is ConstantProductInvariantHarness {
 more than it put in. The reference pair shows both: the linear-price pool leaks
 `k` and lets a round trip profit; the fee'd constant-product pool holds.
 
+### ERC-1967 proxy  ✅ available
+
+The two ways upgradeable contracts get taken over:
+
+```solidity
+import {ProxyInitCheck} from "invariant-kit/src/checks/ProxyInitCheck.sol";
+
+contract MyProxyChecks is ProxyInitCheck {
+    function test_initGuarded() public {
+        // ... deploy + initialize your proxy ...
+        assertInitializerProtected(address(proxy)); // fails if re-initializable
+    }
+}
+```
+
+`assertInitializerProtected` catches an **unprotected initializer** (anyone
+re-initializes and takes ownership). The reference suite also demonstrates a
+**storage-collision upgrade** corrupting `owner` versus an append-only upgrade
+preserving it — the pattern to check before every upgrade.
+
 ### Roadmap
 
-- **ERC-1967 proxy** — unprotected-initializer and storage-collision-on-upgrade checks.
 - **Staking** — reward-conservation invariant harness (extending the notify check).
+- More primitives (lending, ERC-4626 rehypothecation, Uniswap v4 hooks) as demand appears.
 
 ## Why
 
