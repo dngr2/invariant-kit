@@ -7,8 +7,13 @@ check and get a failing transaction if the bug is present, not a vague warning.
 
 The bugs this targets are the ones that don't revert and pass a normal test
 suite: ERC-4626 share inflation, reward-accounting mistakes, AMM value leaks,
-proxy storage collisions. Each module is self-contained and depends only on
-`forge-std`.
+proxy storage collisions, reserves that no longer cover liabilities, value
+stranded in a forwarder, orders filled twice. Each module is self-contained and
+depends only on `forge-std`.
+
+Several of these modules generalise property patterns that caught real bugs in
+the author's own DeFi product line — battle-tested shapes, packaged so you point
+them at your contract in a few lines.
 
 ## Install
 
@@ -198,6 +203,80 @@ holds and (2) the per-controller claimable amounts sum to exactly
 `totalReserved`. The reference pair shows both: the correct vault records the
 reserve on fulfilment; the broken one drops the accounting, so 60 assets stay
 claimable against a reserve of 0 — the leak the check catches.
+
+### Reserve-backed solvency  ✅ available
+
+The most reused property in DeFi review: a bonding curve, a savings vault, a CDP,
+a prediction market and a casino bankroll all reduce to *hold at least what you
+owe*. The adapter is two views — `assetBalance()` (what you hold now) and
+`totalOwed()` (what you must be able to pay out now) — and Foundry fuzzes your own
+actions against them:
+
+```solidity
+import {ReserveSolvencyInvariant, IReserveBacked} from "invariant-kit/src/modules/ReserveSolvencyInvariants.sol";
+
+contract MySystemInvariants is ReserveSolvencyInvariant {
+    function _setUpSystem() internal override returns (IReserveBacked, address handler) {
+        MySystem s = new MySystem();
+        return (IReserveBacked(address(s)), address(new MyActions(s)));
+    }
+}
+```
+
+`invariant_reserveCoversLiabilities` asserts `assetBalance() >= totalOwed()` after
+every action. The reference pair shows both: the reserve-capped savings vault only
+promises the interest its reserves cover and stays solvent; the overpromising one
+credits interest it holds no reserves for, so `totalOwed` climbs past
+`assetBalance` and it goes silently insolvent — the state the invariant catches.
+
+### No-value-retained forwarder  ✅ available
+
+For any batch / aggregator / multicall / disperse entrypoint that takes
+`msg.value` and fans it out: it must end every call holding **none** of the
+caller's value. The adapter is the one entrypoint; the invariant checks the
+forwarder's balance is back at its baseline after every call:
+
+```solidity
+import {NoValueRetainedInvariant, IValueBatchForwarder} from "invariant-kit/src/modules/NoValueRetainedInvariants.sol";
+
+contract MyForwarderInvariants is NoValueRetainedInvariant {
+    function _setUpForwarder() internal override returns (IValueBatchForwarder) {
+        return IValueBatchForwarder(address(new MyForwarder()));
+    }
+}
+```
+
+`invariant_noValueRetained` catches the classic stranded-ETH aggregator: the
+reference pair shows a refunding forwarder that returns every unspent and
+skipped-sub-call remainder (balance back to baseline) versus one that forgets the
+refund, so a skipped sub-call's value sits stranded in the contract for anyone to
+sweep.
+
+### No-overfill / no-replay order settler  ✅ available
+
+For a signed-order / OTC settlement book. The adapter exposes
+`fillableRemaining(orderId)`, a `fill` action and a per-account `nonceOf` tracker;
+Foundry fuzzes fills and the handler asserts every fill advances the nonce by
+exactly one:
+
+```solidity
+import {NoOverfillInvariant, IOrderSettlement} from "invariant-kit/src/modules/NoOverfillInvariants.sol";
+
+contract MyBookInvariants is NoOverfillInvariant {
+    function _setUpBook() internal override returns (IOrderSettlement, bytes32[] memory ids) {
+        MyBook b = new MyBook();
+        /* create orders, collect their ids */
+        return (IOrderSettlement(address(b)), ids);
+    }
+}
+```
+
+`invariant_noOverfill` asserts no order is ever filled past its size. The
+reference pair shows both: the CEI settler persists `filled` before paying the
+taker, so a reentrant taker's second fill trips the overfill check and the attack
+reverts; the vulnerable one records `filled` *after* the transfer, so a reentrant
+taker fills the same open amount twice — `filled` ends past `orderSize` (a
+double-fill / replay) and the invariant catches it.
 
 ### Roadmap
 
