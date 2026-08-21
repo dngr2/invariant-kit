@@ -28,7 +28,9 @@ contract ProxyChecksDemo is ProxyInitCheck {
     }
 
     function test_unprotectedInitializer_isExploitable() public {
-        assertFalse(isInitializerProtected(_initedProxy(false)), "expected the unprotected initializer to be re-callable");
+        assertFalse(
+            isInitializerProtected(_initedProxy(false)), "expected the unprotected initializer to be re-callable"
+        );
     }
 
     function test_fixedInitializer_isProtected() public {

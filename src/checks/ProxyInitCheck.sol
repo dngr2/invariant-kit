@@ -19,8 +19,7 @@ abstract contract ProxyInitCheck is Test {
 
     function assertInitializerProtected(address proxy) internal {
         assertTrue(
-            isInitializerProtected(proxy),
-            "initialize is callable again: unprotected initializer -> ownership takeover"
+            isInitializerProtected(proxy), "initialize is callable again: unprotected initializer -> ownership takeover"
         );
     }
 }

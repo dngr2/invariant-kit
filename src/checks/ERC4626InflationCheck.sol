@@ -39,10 +39,6 @@ abstract contract ERC4626InflationCheck is Test {
     ///      vault is NOT meaningfully inflatable.
     function assertNotInflatable(IERC4626Like vault, IERC20Mint asset) internal {
         uint256 victimClaim = _runInflationAttack(vault, asset);
-        assertGt(
-            victimClaim,
-            VICTIM_DEPOSIT / 2,
-            "INFLATION: victim lost >50% of deposit to a first-depositor attack"
-        );
+        assertGt(victimClaim, VICTIM_DEPOSIT / 2, "INFLATION: victim lost >50% of deposit to a first-depositor attack");
     }
 }

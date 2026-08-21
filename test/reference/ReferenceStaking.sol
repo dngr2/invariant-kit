@@ -41,8 +41,7 @@ abstract contract StakingBase {
 
     function rewardPerToken() public view returns (uint256) {
         if (_totalSupply == 0) return rewardPerTokenStored;
-        return rewardPerTokenStored
-            + ((lastTimeRewardApplicable() - lastUpdateTime) * rewardRate * 1e18) / _totalSupply;
+        return rewardPerTokenStored + ((lastTimeRewardApplicable() - lastUpdateTime) * rewardRate * 1e18) / _totalSupply;
     }
 
     function earned(address a) public view returns (uint256) {

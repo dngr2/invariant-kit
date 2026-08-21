@@ -15,9 +15,7 @@ abstract contract AMMRoundTripCheck is Test {
 
     function assertNoRoundTripProfit(IConstantProductAMM amm, uint256 amountIn) internal {
         assertLe(
-            roundTrip(amm, amountIn),
-            amountIn,
-            "ROUND-TRIP DRAIN: trader got back more than they put in (LPs lose)"
+            roundTrip(amm, amountIn), amountIn, "ROUND-TRIP DRAIN: trader got back more than they put in (LPs lose)"
         );
     }
 }

@@ -46,10 +46,6 @@ abstract contract ConstantProductInvariantHarness is StdInvariant, Test {
     }
 
     function invariant_kNeverDecreases() public view {
-        assertGe(
-            amm.reserve0() * amm.reserve1(),
-            k0,
-            "constant-product k decreased: value leaked from the pool"
-        );
+        assertGe(amm.reserve0() * amm.reserve1(), k0, "constant-product k decreased: value leaked from the pool");
     }
 }

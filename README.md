@@ -133,10 +133,75 @@ re-initializes and takes ownership). The reference suite also demonstrates a
 **storage-collision upgrade** corrupting `owner` versus an append-only upgrade
 preserving it — the pattern to check before every upgrade.
 
+### Over-collateralised lending market  ✅ available
+
+Fuzz an isolated or pooled lending market (Morpho-style) under random
+borrow/repay/oracle/liquidate sequences — the state that produces underwater
+positions and bad debt:
+
+```solidity
+import {LendingInvariantHarness, ILendingMarket, IERC20Mintable, ISettableOracle} from "invariant-kit/src/modules/LendingInvariants.sol";
+
+contract MyMarketInvariants is LendingInvariantHarness {
+    function _setUpMarket() internal override
+        returns (ILendingMarket, IERC20Mintable, IERC20Mintable, ISettableOracle)
+    { /* deploy + return market, loan token, collateral token, oracle */ }
+}
+```
+
+Checked invariants:
+- `invariant_idleLiquidityNonNegative` — `loanBalance + totalBorrowAssets >= totalSupplyAssets`. Catches **unsocialised bad debt**: a market that writes debt off the borrower but not the supply side leaves `totalSupplyAssets` overstated and goes silently insolvent.
+- `invariant_neverOverLent` — `totalBorrowAssets <= totalSupplyAssets` (never lend out more than supplied).
+- `invariant_noPhantomBadDebt` — a fully-liquidated (zero-collateral) borrower carries zero debt (bad debt is socialised, not left as phantom, uncollectable debt).
+- `invariant_collateralBacking` — held collateral `>= totalCollateral` (tracked).
+
+The reference pair shows both outcomes: the correct market socialises the loss and stays solvent; the broken one forgets `totalSupplyAssets -= badDebt` and trips `invariant_idleLiquidityNonNegative` after a single bad-debt liquidation.
+
+### Profit-locking ERC-4626 allocator  ✅ available
+
+Yearn-V3-style vault that drips reported profit into the price per share over an
+unlock window. Fuzz that a gain report cannot be sandwiched:
+
+```solidity
+import {ProfitLockingInvariantHarness, IProfitLockingVault, IERC20Mint} from "invariant-kit/src/modules/ProfitLockingInvariants.sol";
+
+contract MyAllocatorInvariants is ProfitLockingInvariantHarness {
+    function _setUpVault() internal override returns (IProfitLockingVault, IERC20Mint)
+    { /* deploy + return vault, asset */ }
+}
+```
+
+Checked properties:
+- **Anti-sandwich / PPS monotonicity** — the price per share must not move in the block a gain is reported, and never falls between actions absent a realised loss. Catches a vault that **credits profit to PPS instantly** (a front-runner deposits before the report and redeems after, stealing the gain).
+- `invariant_solvency` — `convertToAssets(totalSupply()) <= totalAssets()`.
+- `invariant_lockedNotExceedSelfBalance` / `invariant_selfBalanceAccounting` — locked profit shares never exceed the vault's own share balance, and `locked + unlocked == selfBalance`.
+
+The reference pair shows both: the correct vault mints locked shares so PPS is flat in-block then unlocks linearly; the broken one credits profit instantly and jumps PPS in the report block.
+
+### Async-redeem (ERC-7540) reserve conservation  ✅ available
+
+A stateless conservation check for an async-redeem vault, where assets are
+reserved between fulfilment and claim:
+
+```solidity
+import {AsyncRedeemConservationCheck, IAsyncRedeemVault} from "invariant-kit/src/checks/AsyncRedeemConservationCheck.sol";
+
+contract MyVaultChecks is AsyncRedeemConservationCheck {
+    function test_reserveConserved() public {
+        assertReserveConserved(IAsyncRedeemVault(address(vault)), controllers);
+    }
+}
+```
+
+`assertReserveConserved` fails unless (1) reserved assets `<=` assets the vault
+holds and (2) the per-controller claimable amounts sum to exactly
+`totalReserved`. The reference pair shows both: the correct vault records the
+reserve on fulfilment; the broken one drops the accounting, so 60 assets stay
+claimable against a reserve of 0 — the leak the check catches.
+
 ### Roadmap
 
-- **Staking** — reward-conservation invariant harness (extending the notify check).
-- More primitives (lending, ERC-4626 rehypothecation, Uniswap v4 hooks) as demand appears.
+- More primitives (ERC-4626 rehypothecation, Uniswap v4 hooks) as demand appears.
 
 ## Why
 

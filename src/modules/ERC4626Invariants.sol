@@ -96,10 +96,6 @@ abstract contract ERC4626InvariantHarness is StdInvariant, Test {
     function invariant_roundTripNoValueCreation() public view {
         uint256 probe = 1e18;
         uint256 shares = vault.previewDeposit(probe);
-        assertLe(
-            vault.previewRedeem(shares),
-            probe,
-            "ROUND-TRIP GAIN: previewRedeem(previewDeposit(x)) > x"
-        );
+        assertLe(vault.previewRedeem(shares), probe, "ROUND-TRIP GAIN: previewRedeem(previewDeposit(x)) > x");
     }
 }
