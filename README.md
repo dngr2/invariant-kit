@@ -278,9 +278,83 @@ reverts; the vulnerable one records `filled` *after* the transfer, so a reentran
 taker fills the same open amount twice — `filled` ends past `orderSize` (a
 double-fill / replay) and the invariant catches it.
 
+### Fee-on-transfer accounting  ✅ available
+
+For any pool / vault / escrow that pulls a token in and credits the depositor an
+internal balance. With a fee-on-transfer (or deflationary/rebasing) token, fewer
+tokens arrive than were requested, so a contract that credits the *requested*
+amount promises more than it holds:
+
+```solidity
+import {FeeOnTransferInvariant, IFeeAware} from "invariant-kit/src/modules/FeeOnTransferInvariants.sol";
+
+contract MyPoolInvariants is FeeOnTransferInvariant {
+    function _setUpSystem() internal override returns (IFeeAware, address handler) {
+        MyPool p = new MyPool(/* a fee-on-transfer token */);
+        return (IFeeAware(address(p)), address(new MyActions(p)));
+    }
+}
+```
+
+`invariant_creditBackedByBalance` asserts `creditedTotal <= tokenBalance`. The
+reference pair drives a 1%-fee token through both: the pool that credits the real
+`balanceOf` delta stays exactly backed, while the one that credits the requested
+face value goes insolvent on the first deposit — the last depositors out are left
+short.
+
+### Oracle validity  ✅ available
+
+For any consumer of a Chainlink-style price feed. Reading `answer` without
+validating the round is the textbook oracle mistake — a zero, a negative (which
+`uint256`-wraps to ~1e77), a stale price, or a carried-over answer all sail
+straight into your pricing:
+
+```solidity
+import {OracleValidityCheck, IPriceConsumer, ISettableAggregator} from "invariant-kit/src/checks/OracleValidityCheck.sol";
+
+contract MyOracleTest is OracleValidityCheck {
+    function test_priceConsumerIsSafe() public {
+        (MyConsumer c, MockAgg agg) = /* wire consumer to a settable mock feed */;
+        assertValidatesOracle(IPriceConsumer(address(c)), ISettableAggregator(address(agg)), 1 hours);
+    }
+}
+```
+
+`assertValidatesOracle` drives the feed into all four bad states and asserts your
+consumer reverts on each. The reference pair shows a consumer that checks
+`answer > 0`, `updatedAt`, staleness against `maxAge`, and `answeredInRound >=
+roundId` passing, versus a naive one that serves zero, a wrapped-negative, and a
+two-hour-old price as if current.
+
+### ERC-4626 withdrawal rounding direction  ✅ available
+
+ERC-4626 requires `withdraw(assets)` to round the share cost **up**. Reuse the
+deposit path's floor-rounding and, once the share price drifts above 1:1, a small
+withdrawal rounds to **zero** shares burned while the assets still leave — a free
+withdrawal, repeatable until the yield is drained:
+
+```solidity
+import {WithdrawalRoundingCheck, IWithdrawVault} from "invariant-kit/src/checks/WithdrawalRoundingCheck.sol";
+import {IERC20Mint} from "invariant-kit/src/modules/ERC4626Invariants.sol";
+
+contract MyVaultRoundingTest is WithdrawalRoundingCheck {
+    function test_withdrawRoundsInVaultFavour() public {
+        (MyVault v, MyToken t) = /* deploy */;
+        assertWithdrawRoundingFavorsVault(IWithdrawVault(address(v)), IERC20Mint(address(t)));
+    }
+}
+```
+
+`assertWithdrawRoundingFavorsVault` seeds an above-1:1 price and asserts a
+one-unit asset withdrawal burns a non-zero share count. The reference pair proves
+it bites: at a 10:1 price the wrong-rounding vault lets a zero-share account
+withdraw assets for free, while the correct (round-up) vault reverts on the first
+attempt.
+
 ### Roadmap
 
-- More primitives (ERC-4626 rehypothecation, Uniswap v4 hooks) as demand appears.
+- More primitives (ERC-4626 rehypothecation, Uniswap v4 hooks, veToken/gauge
+  math, cross-function reentrancy templates) as demand appears.
 
 ## Why
 
